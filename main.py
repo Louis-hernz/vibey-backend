@@ -132,8 +132,8 @@ async def root():
 
 @app.post("/v1/users", response_model=UserResponse)
 async def create_user(
-    user_data: UserCreate,
     response: Response,
+    user_data: UserCreate = None,
     conn: sqlite3.Connection = Depends(get_db)
 ):
     """Create a new guest user"""
@@ -159,7 +159,8 @@ async def create_user(
         value=session_id,
         max_age=settings.session_max_age,
         httponly=True,
-        samesite="lax"
+        samesite="none",  # Allow cross-site cookies
+        secure=True  # Required for SameSite=None
     )
     
     return UserResponse(
@@ -280,7 +281,8 @@ async def spotify_callback(
             value=session_id,
             max_age=settings.session_max_age,
             httponly=True,
-            samesite="lax"
+            samesite="none",
+            secure=True
         )
         
         # Redirect to frontend
