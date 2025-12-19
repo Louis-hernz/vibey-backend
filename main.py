@@ -27,12 +27,14 @@ app = FastAPI(
 )
 
 # CORS middleware
+cors_origins = settings.cors_origins.split(",") if settings.cors_origins else ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins.split(","),
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Session serializer
