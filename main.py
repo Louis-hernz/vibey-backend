@@ -139,6 +139,7 @@ async def update_preview_urls(limit: int = 100):
     """Update preview URLs from Spotify API"""
     import httpx
     import asyncio
+    from database import Database
     
     # Get Spotify access token
     auth_url = "https://accounts.spotify.com/api/token"
@@ -159,7 +160,8 @@ async def update_preview_urls(limit: int = 100):
         headers = {"Authorization": f"Bearer {access_token}"}
         
         # Get database connection
-        conn = get_db_connection()
+        database = Database()
+        conn = database.connect()
         cursor = conn.cursor()
         
         # Get tracks without preview URLs
@@ -219,7 +221,7 @@ async def update_preview_urls(limit: int = 100):
                 continue
         
         conn.commit()
-        conn.close()
+        database.close()
         
         return {
             "success": True,
