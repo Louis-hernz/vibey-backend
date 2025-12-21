@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Cookie, Response, Query, Depends
+from fastapi import FastAPI, HTTPException, Cookie, Response, Query, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, JSONResponse
 from typing import Optional, List
@@ -55,10 +55,13 @@ def get_db():
 
 def get_current_user(
     vibey_session: Optional[str] = Cookie(None),
+    x_session_id: Optional[str] = Header(None),
     conn: sqlite3.Connection = Depends(get_db)
 ) -> Optional[str]:
-    """Get current user from session cookie"""
-    if not vibey_session:
+    """Get current user from session cookie or header"""
+    session_id = vibey_session or x_session_id
+    
+    if not session_id:
         return None
     
     try:
@@ -66,7 +69,7 @@ def get_current_user(
         cursor = conn.cursor()
         cursor.execute("""
         SELECT user_id, expires_at FROM sessions WHERE session_id = ?
-        """, (vibey_session,))
+        """, (session_id,))
         row = cursor.fetchone()
         
         if not row:
@@ -125,9 +128,107 @@ async def root():
             "vibes": "/v1/vibes",
             "feed": "/v1/feed/next",
             "feedback": "/v1/feedback",
-            "history": "/v1/history"
+            "history": "/v1/history",
+            "admin": "/admin/update-previews"
         }
     }
+
+
+@app.post("/admin/update-previews")
+async def update_preview_urls(limit: int = 100):
+    """Update preview URLs from Spotify API"""
+    import httpx
+    import asyncio
+    
+    # Get Spotify access token
+    auth_url = "https://accounts.spotify.com/api/token"
+    auth_data = {
+        "grant_type": "client_credentials",
+        "client_id": settings.spotify_client_id,
+        "client_secret": settings.spotify_client_secret
+    }
+    
+    async with httpx.AsyncClient() as client:
+        try:
+            auth_response = await client.post(auth_url, data=auth_data)
+            auth_response.raise_for_status()
+            access_token = auth_response.json()["access_token"]
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to get Spotify token: {e}")
+        
+        headers = {"Authorization": f"Bearer {access_token}"}
+        
+        # Get database connection
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get tracks without preview URLs
+        cursor.execute("""
+        SELECT track_id, title, artist FROM tracks 
+        WHERE (preview_url IS NULL OR preview_url = '') 
+        AND track_id IS NOT NULL
+        LIMIT ?
+        """, (limit,))
+        
+        tracks = cursor.fetchall()
+        
+        updated_count = 0
+        failed_count = 0
+        updates = []
+        
+        for track_id, title, artist in tracks:
+            try:
+                track_url = f"https://api.spotify.com/v1/tracks/{track_id}"
+                response = await client.get(track_url, headers=headers)
+                
+                if response.status_code != 200:
+                    failed_count += 1
+                    continue
+                
+                track_info = response.json()
+                preview_url = track_info.get('preview_url')
+                album_art = None
+                
+                if track_info.get('album') and track_info['album'].get('images'):
+                    images = track_info['album']['images']
+                    if images:
+                        album_art = images[0]['url']
+                
+                if preview_url or album_art:
+                    cursor.execute("""
+                    UPDATE tracks 
+                    SET preview_url = ?, 
+                        audio_url = ?,
+                        artwork_url = ?
+                    WHERE track_id = ?
+                    """, (preview_url, preview_url, album_art or "https://via.placeholder.com/300", track_id))
+                    
+                    updated_count += 1
+                    updates.append({
+                        "track": f"{title} - {artist}",
+                        "has_preview": preview_url is not None,
+                        "has_artwork": album_art is not None
+                    })
+                else:
+                    failed_count += 1
+                
+                await asyncio.sleep(0.35)
+                
+            except Exception as e:
+                failed_count += 1
+                continue
+        
+        conn.commit()
+        conn.close()
+        
+        return {
+            "success": True,
+            "updated": updated_count,
+            "failed": failed_count,
+            "total_processed": len(tracks),
+            "sample_updates": updates[:10],
+            "message": f"Run this endpoint {(997 // limit) + 1} times to update all tracks"
+        }
 
 
 @app.post("/v1/users", response_model=UserResponse)
@@ -162,6 +263,9 @@ async def create_user(
         samesite="none",  # Allow cross-site cookies
         secure=True  # Required for SameSite=None
     )
+    
+    # Also return session_id in response for header-based auth
+    response.headers["X-Session-Id"] = session_id
     
     return UserResponse(
         user_id=user_id,
