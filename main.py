@@ -134,7 +134,7 @@ async def root():
     }
 
 
-@app.post("/admin/update-previews")
+@app.get("/admin/update-previews")
 async def update_preview_urls(limit: int = 100):
     """Update preview URLs from Spotify API"""
     import httpx
