@@ -129,9 +129,32 @@ async def root():
             "feed": "/v1/feed/next",
             "feedback": "/v1/feedback",
             "history": "/v1/history",
+            "youtube_search": "/v1/youtube/search",
             "admin": "/admin/update-previews"
         }
     }
+
+
+@app.get("/v1/youtube/search")
+async def youtube_search(title: str, artist: str):
+    """
+    Search YouTube for a track and return embed-ready data
+    
+    Query params:
+        title: Track title
+        artist: Artist name
+    
+    Returns:
+        video_id, embed_url, watch_url for embedding YouTube player
+    """
+    from youtube_search import search_youtube_track
+    
+    result = await search_youtube_track(title, artist)
+    
+    if not result:
+        raise HTTPException(status_code=404, detail="No YouTube video found")
+    
+    return result
 
 
 @app.get("/admin/update-previews")
