@@ -30,8 +30,13 @@ class TrackResponse(BaseModel):
     title: str
     artist: str
     artworkUrl: Optional[str] = None
-    audioUrl: Optional[str] = None
+    audioUrl: Optional[str] = None  # Spotify 30-second preview
+    youtubeUrl: Optional[str] = None  # YouTube video URL  
+    youtubeEmbedUrl: Optional[str] = None  # YouTube embed URL for iframe
+    spotifyUri: Optional[str] = None  # For Spotify Premium playback (e.g. "spotify:track:xxx")
     source: str = "spotify"
+    playbackSource: str = "preview"  # "preview", "youtube", or "spotify_premium"
+    duration_ms: Optional[int] = None
     vibeTags: List[str] = []
 
 

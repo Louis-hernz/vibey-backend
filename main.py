@@ -428,6 +428,12 @@ async def get_feed(
     if mode == "vibe" and not vibe_id:
         raise HTTPException(status_code=400, detail="vibe_id required for vibe mode")
     
+    # Check if user has Spotify Premium (check user_type in database)
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_type FROM users WHERE user_id = ?", (user_id,))
+    user_row = cursor.fetchone()
+    has_spotify_premium = user_row and user_row[0] == 'spotify'
+    
     # Initialize recommender
     recommender = RecommenderEngine(conn)
     
@@ -440,13 +446,13 @@ async def get_feed(
     # Mark tracks as seen
     recommender.mark_tracks_seen(user_id, track_ids)
     
-    # Fetch track details
-    cursor = conn.cursor()
+    # Fetch track details with all fields
     tracks = []
     
     for track_id in track_ids:
         cursor.execute("""
-        SELECT t.track_id, t.title, t.artist, t.artwork_url, t.audio_url, t.source
+        SELECT t.track_id, t.title, t.artist, t.artwork_url, t.preview_url, 
+               t.source, t.spotify_uri, t.duration_ms
         FROM tracks t
         WHERE t.track_id = ?
         """, (track_id,))
@@ -463,13 +469,41 @@ async def get_feed(
             
             vibe_tags = [r[0] for r in cursor.fetchall()]
             
+            track_id_val = row[0]
+            title = row[1]
+            artist = row[2]
+            artwork_url = row[3]
+            preview_url = row[4]
+            source = row[5]
+            spotify_uri = row[6]
+            duration_ms = row[7]
+            
+            # Determine playback source and URLs
+            playback_source = "preview"
+            audio_url = preview_url
+            youtube_url = None
+            youtube_embed_url = None
+            
+            if has_spotify_premium and spotify_uri:
+                # User has Spotify Premium - use full track playback
+                playback_source = "spotify_premium"
+            elif not preview_url:
+                # No Spotify preview - will use YouTube (frontend handles search)
+                playback_source = "youtube"
+                # Frontend will search YouTube using title + artist
+            
             tracks.append(TrackResponse(
-                trackId=row[0],
-                title=row[1],
-                artist=row[2],
-                artworkUrl=row[3],
-                audioUrl=row[4],
-                source=row[5],
+                trackId=track_id_val,
+                title=title,
+                artist=artist,
+                artworkUrl=artwork_url,
+                audioUrl=audio_url,
+                youtubeUrl=youtube_url,  # Frontend will search if needed
+                youtubeEmbedUrl=youtube_embed_url,
+                spotifyUri=spotify_uri if has_spotify_premium else None,
+                source=source,
+                playbackSource=playback_source,
+                duration_ms=duration_ms,
                 vibeTags=vibe_tags
             ))
     
