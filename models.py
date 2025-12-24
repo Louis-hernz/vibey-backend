@@ -11,8 +11,10 @@ class UserCreate(BaseModel):
 class UserResponse(BaseModel):
     """Response model for user data"""
     user_id: str
-    user_type: str
+    user_type: str  # "guest" or "spotify"
     spotify_user_id: Optional[str] = None
+    spotify_display_name: Optional[str] = None
+    has_spotify_premium: bool = False
     created_at: int
 
 

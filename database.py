@@ -38,6 +38,8 @@ class Database:
             spotify_access_token TEXT,
             spotify_refresh_token TEXT,
             spotify_token_expires_at INTEGER,
+            spotify_display_name TEXT,
+            spotify_product TEXT,  -- 'premium', 'free', or NULL for guests
             preference_vector TEXT NOT NULL,  -- JSON array
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL

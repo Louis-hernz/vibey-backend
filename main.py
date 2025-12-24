@@ -339,6 +339,8 @@ async def spotify_callback(
         # Get user profile
         profile = spotify_client.get_user_profile(access_token)
         spotify_user_id = profile['id']
+        spotify_display_name = profile.get('display_name', '')
+        spotify_product = profile.get('product', 'free')  # 'premium', 'free', 'open'
         
         cursor = conn.cursor()
         timestamp = int(datetime.now().timestamp())
@@ -357,9 +359,12 @@ async def spotify_callback(
             SET spotify_access_token = ?,
                 spotify_refresh_token = ?,
                 spotify_token_expires_at = ?,
+                spotify_display_name = ?,
+                spotify_product = ?,
                 updated_at = ?
             WHERE user_id = ?
-            """, (access_token, refresh_token, expires_at, timestamp, user_id))
+            """, (access_token, refresh_token, expires_at, spotify_display_name,
+                  spotify_product, timestamp, user_id))
         else:
             # Check if we should migrate a guest user
             guest_user_id = None
@@ -374,10 +379,12 @@ async def spotify_callback(
                         spotify_access_token = ?,
                         spotify_refresh_token = ?,
                         spotify_token_expires_at = ?,
+                        spotify_display_name = ?,
+                        spotify_product = ?,
                         updated_at = ?
                     WHERE user_id = ?
                     """, (spotify_user_id, access_token, refresh_token, expires_at, 
-                          timestamp, guest_user_id))
+                          spotify_display_name, spotify_product, timestamp, guest_user_id))
                     user_id = guest_user_id
                 else:
                     guest_user_id = None
@@ -391,11 +398,12 @@ async def spotify_callback(
                 INSERT INTO users 
                 (user_id, user_type, spotify_user_id, spotify_access_token,
                  spotify_refresh_token, spotify_token_expires_at, 
+                 spotify_display_name, spotify_product,
                  preference_vector, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (user_id, 'spotify', spotify_user_id, access_token, 
-                      refresh_token, expires_at, vector_to_json(initial_pref),
-                      timestamp, timestamp))
+                      refresh_token, expires_at, spotify_display_name, spotify_product,
+                      vector_to_json(initial_pref), timestamp, timestamp))
         
         conn.commit()
         
@@ -412,7 +420,7 @@ async def spotify_callback(
             secure=True
         )
         
-        # Redirect to frontend
+        # Redirect to frontend (update this URL to your Lovable app)
         return RedirectResponse("http://localhost:3000/")
     
     except Exception as e:
@@ -451,11 +459,11 @@ async def get_feed(
     if mode == "vibe" and not vibe_id:
         raise HTTPException(status_code=400, detail="vibe_id required for vibe mode")
     
-    # Check if user has Spotify Premium (check user_type in database)
+    # Check if user has Spotify Premium
     cursor = conn.cursor()
-    cursor.execute("SELECT user_type FROM users WHERE user_id = ?", (user_id,))
+    cursor.execute("SELECT spotify_product FROM users WHERE user_id = ?", (user_id,))
     user_row = cursor.fetchone()
-    has_spotify_premium = user_row and user_row[0] == 'spotify'
+    has_spotify_premium = user_row and user_row[0] == 'premium'
     
     # Initialize recommender
     recommender = RecommenderEngine(conn)
@@ -471,6 +479,8 @@ async def get_feed(
     
     # Fetch track details with all fields
     tracks = []
+    
+    from youtube_search import search_youtube_track
     
     for track_id in track_ids:
         cursor.execute("""
@@ -511,9 +521,14 @@ async def get_feed(
                 # User has Spotify Premium - use full track playback
                 playback_source = "spotify_premium"
             elif not preview_url:
-                # No Spotify preview - will use YouTube (frontend handles search)
+                # No Spotify preview - search YouTube
                 playback_source = "youtube"
-                # Frontend will search YouTube using title + artist
+                
+                # Fetch YouTube URL in real-time
+                youtube_data = await search_youtube_track(title, artist)
+                if youtube_data and youtube_data.get("video_id"):
+                    youtube_url = youtube_data["watch_url"]
+                    youtube_embed_url = youtube_data["embed_url"]
             
             tracks.append(TrackResponse(
                 trackId=track_id_val,
@@ -521,7 +536,7 @@ async def get_feed(
                 artist=artist,
                 artworkUrl=artwork_url,
                 audioUrl=audio_url,
-                youtubeUrl=youtube_url,  # Frontend will search if needed
+                youtubeUrl=youtube_url,
                 youtubeEmbedUrl=youtube_embed_url,
                 spotifyUri=spotify_uri if has_spotify_premium else None,
                 source=source,
@@ -641,7 +656,8 @@ async def get_current_user_info(
     """Get current user information"""
     cursor = conn.cursor()
     cursor.execute("""
-    SELECT user_id, user_type, spotify_user_id, created_at
+    SELECT user_id, user_type, spotify_user_id, spotify_display_name, 
+           spotify_product, created_at
     FROM users WHERE user_id = ?
     """, (user_id,))
     
@@ -649,11 +665,15 @@ async def get_current_user_info(
     if not row:
         raise HTTPException(status_code=404, detail="User not found")
     
+    has_premium = row[4] == 'premium' if row[4] else False
+    
     return UserResponse(
         user_id=row[0],
         user_type=row[1],
         spotify_user_id=row[2],
-        created_at=row[3]
+        spotify_display_name=row[3],
+        has_spotify_premium=has_premium,
+        created_at=row[5]
     )
 
 
