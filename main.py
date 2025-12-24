@@ -124,7 +124,9 @@ async def root():
         "version": "1.0.0",
         "endpoints": {
             "users": "/v1/users",
+            "me": "/v1/me",
             "auth": "/v1/auth/spotify/login",
+            "spotify_token": "/v1/auth/spotify/token",
             "vibes": "/v1/vibes",
             "feed": "/v1/feed/next",
             "feedback": "/v1/feedback",
@@ -421,7 +423,7 @@ async def spotify_callback(
         )
         
         # Redirect to frontend (update this URL to your Lovable app)
-        return RedirectResponse("http://localhost:3000/")
+        return RedirectResponse(settings.frontend_url)
     
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"OAuth error: {str(e)}")
@@ -675,6 +677,72 @@ async def get_current_user_info(
         has_spotify_premium=has_premium,
         created_at=row[5]
     )
+
+
+@app.get("/v1/auth/spotify/token")
+async def get_spotify_token(
+    user_id: str = Depends(require_user),
+    conn: sqlite3.Connection = Depends(get_db)
+):
+    """
+    Get user's Spotify access token for Web Playback SDK
+    Only works for Spotify Premium users
+    """
+    cursor = conn.cursor()
+    cursor.execute("""
+    SELECT spotify_access_token, spotify_token_expires_at, 
+           spotify_refresh_token, spotify_product
+    FROM users WHERE user_id = ?
+    """, (user_id,))
+    
+    row = cursor.fetchone()
+    if not row or not row[0]:
+        raise HTTPException(status_code=404, detail="No Spotify authentication found")
+    
+    access_token = row[0]
+    expires_at = row[1]
+    refresh_token = row[2]
+    product = row[3]
+    
+    # Check if user has Premium
+    if product != 'premium':
+        raise HTTPException(
+            status_code=403, 
+            detail="Spotify Premium required for full track playback"
+        )
+    
+    # Check if token expired
+    current_time = int(datetime.now().timestamp())
+    if expires_at < current_time:
+        # Token expired - refresh it
+        try:
+            token_info = spotify_client.refresh_access_token(refresh_token)
+            access_token = token_info['access_token']
+            expires_in = token_info['expires_in']
+            new_expires_at = current_time + expires_in
+            
+            # Update token in database
+            cursor.execute("""
+            UPDATE users 
+            SET spotify_access_token = ?,
+                spotify_token_expires_at = ?,
+                updated_at = ?
+            WHERE user_id = ?
+            """, (access_token, new_expires_at, current_time, user_id))
+            conn.commit()
+            
+            expires_at = new_expires_at
+        except Exception as e:
+            raise HTTPException(
+                status_code=401,
+                detail=f"Failed to refresh Spotify token: {str(e)}"
+            )
+    
+    return {
+        "access_token": access_token,
+        "expires_at": expires_at,
+        "product": product
+    }
 
 
 if __name__ == "__main__":

@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     spotify_client_secret: str = ""
     spotify_redirect_uri: str = "http://localhost:8000/v1/auth/spotify/callback"
     
+    # Frontend
+    frontend_url: str = "http://localhost:3000"
+    
     # Session management
     secret_key: str = "your-secret-key-change-in-production"
     session_cookie_name: str = "vibey_session"
