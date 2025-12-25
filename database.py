@@ -78,6 +78,9 @@ class Database:
             artwork_url TEXT,
             audio_url TEXT,
             preview_url TEXT,
+            youtube_video_id TEXT,  -- Cached YouTube video ID
+            youtube_url TEXT,  -- Cached YouTube watch URL  
+            youtube_embed_url TEXT,  -- Cached YouTube embed URL
             source TEXT NOT NULL DEFAULT 'spotify',
             spotify_uri TEXT,
             embedding_vector TEXT NOT NULL,  -- JSON array

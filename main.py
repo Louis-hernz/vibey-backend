@@ -487,7 +487,8 @@ async def get_feed(
     for track_id in track_ids:
         cursor.execute("""
         SELECT t.track_id, t.title, t.artist, t.artwork_url, t.preview_url, 
-               t.source, t.spotify_uri, t.duration_ms
+               t.source, t.spotify_uri, t.duration_ms,
+               t.youtube_video_id, t.youtube_url, t.youtube_embed_url
         FROM tracks t
         WHERE t.track_id = ?
         """, (track_id,))
@@ -512,25 +513,44 @@ async def get_feed(
             source = row[5]
             spotify_uri = row[6]
             duration_ms = row[7]
+            cached_youtube_id = row[8]
+            cached_youtube_url = row[9]
+            cached_youtube_embed = row[10]
             
             # Determine playback source and URLs
             playback_source = "preview"
             audio_url = preview_url
-            youtube_url = None
-            youtube_embed_url = None
+            youtube_url = cached_youtube_url
+            youtube_embed_url = cached_youtube_embed
             
             if has_spotify_premium and spotify_uri:
                 # User has Spotify Premium - use full track playback
                 playback_source = "spotify_premium"
             elif not preview_url:
-                # No Spotify preview - search YouTube
+                # No Spotify preview - use YouTube
                 playback_source = "youtube"
                 
-                # Fetch YouTube URL in real-time
-                youtube_data = await search_youtube_track(title, artist)
-                if youtube_data and youtube_data.get("video_id"):
-                    youtube_url = youtube_data["watch_url"]
-                    youtube_embed_url = youtube_data["embed_url"]
+                # Only search if not already cached
+                if not cached_youtube_id:
+                    try:
+                        youtube_data = await search_youtube_track(title, artist)
+                        if youtube_data and youtube_data.get("video_id"):
+                            youtube_url = youtube_data["watch_url"]
+                            youtube_embed_url = youtube_data["embed_url"]
+                            
+                            # Cache the result in database
+                            cursor.execute("""
+                            UPDATE tracks
+                            SET youtube_video_id = ?,
+                                youtube_url = ?,
+                                youtube_embed_url = ?
+                            WHERE track_id = ?
+                            """, (youtube_data["video_id"], youtube_url, 
+                                  youtube_embed_url, track_id_val))
+                            conn.commit()
+                    except Exception as e:
+                        # If YouTube search fails, don't crash - just skip
+                        print(f"YouTube search failed for {title}: {e}")
             
             tracks.append(TrackResponse(
                 trackId=track_id_val,
