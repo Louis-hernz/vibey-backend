@@ -494,9 +494,6 @@ async def get_feed(
         cursor.execute("""
         SELECT t.track_id, t.title, t.artist, t.artwork_url, t.preview_url, 
                t.source, t.spotify_uri, t.duration_ms,
-        cursor.execute("""
-        SELECT t.track_id, t.title, t.artist, t.artwork_url, t.preview_url, 
-               t.source, t.spotify_uri, t.duration_ms,
                t.youtube_video_id, t.youtube_url, t.youtube_embed_url
         FROM tracks t
         WHERE t.track_id = ?
@@ -628,7 +625,7 @@ async def get_history(
     user_id: str = Depends(require_user),
     conn: sqlite3.Connection = Depends(get_db)
 ):
-    """Get user's feedback history"""
+    """Get user feedback history"""
     cursor = conn.cursor()
     
     cursor.execute("""
@@ -715,7 +712,7 @@ async def get_spotify_token(
     conn: sqlite3.Connection = Depends(get_db)
 ):
     """
-    Get user's Spotify access token for Web Playback SDK
+    Get user Spotify access token for Web Playback SDK
     Only works for Spotify Premium users
     """
     cursor = conn.cursor()
