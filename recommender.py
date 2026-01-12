@@ -277,6 +277,76 @@ class RecommenderEngine:
         
         return result[:limit]
     
+    def generate_enjoy_feed(self, user_id: str, limit: int, seed: Optional[int] = None) -> List[Tuple[str, bool]]:
+        """
+        Generate enjoy mode feed using weighted coin flip for each track
+        ~70% chance of liked track, ~30% chance of new similar track
+        Returns list of tuples: (track_id, previously_liked)
+        """
+        if seed is not None:
+            random.seed(seed)
+            np.random.seed(seed)
+        
+        # Probabilities
+        liked_probability = 0.7
+        
+        # Get pools of tracks
+        liked_tracks = self.get_liked_tracks(user_id, vibe_id=None)
+        unseen_tracks = self.get_unseen_tracks(user_id, vibe_id=None)
+        
+        # If no liked tracks, return all new tracks
+        if not liked_tracks:
+            if not unseen_tracks:
+                return []
+            # Score and sort unseen tracks
+            scores = self.score_tracks(user_id, unseen_tracks)
+            scores = self.apply_diversity_penalty(unseen_tracks, scores)
+            sorted_unseen = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+            return [(track_id, False) for track_id, _ in sorted_unseen[:limit]]
+        
+        # If no unseen tracks, return all liked
+        if not unseen_tracks:
+            sampled = random.sample(liked_tracks, min(limit, len(liked_tracks)))
+            return [(track_id, True) for track_id in sampled]
+        
+        # Pre-score unseen tracks for efficient sampling
+        unseen_scores = self.score_tracks(user_id, unseen_tracks)
+        unseen_scores = self.apply_diversity_penalty(unseen_tracks, unseen_scores)
+        sorted_unseen = sorted(unseen_scores.items(), key=lambda x: x[1], reverse=True)
+        
+        result = []
+        liked_pool = liked_tracks.copy()
+        unseen_pool = [track_id for track_id, _ in sorted_unseen]
+        
+        # For each track slot, flip weighted coin
+        for _ in range(limit):
+            # Stop if both pools exhausted
+            if not liked_pool and not unseen_pool:
+                break
+            
+            # If only one pool has tracks, use it
+            if not liked_pool:
+                track_id = unseen_pool.pop(0)
+                result.append((track_id, False))
+                continue
+            
+            if not unseen_pool:
+                track_id = liked_pool.pop(random.randrange(len(liked_pool)))
+                result.append((track_id, True))
+                continue
+            
+            # Weighted coin flip: 70% liked, 30% new
+            if random.random() < liked_probability:
+                # Pick random liked track
+                track_id = liked_pool.pop(random.randrange(len(liked_pool)))
+                result.append((track_id, True))
+            else:
+                # Pick next most similar unseen track
+                track_id = unseen_pool.pop(0)
+                result.append((track_id, False))
+        
+        return result
+    
     def mark_tracks_seen(self, user_id: str, track_ids: List[str]):
         """Mark tracks as seen by user"""
         cursor = self.conn.cursor()

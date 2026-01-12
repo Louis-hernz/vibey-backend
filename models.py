@@ -40,6 +40,7 @@ class TrackResponse(BaseModel):
     playbackSource: str = "preview"  # "preview", "youtube", or "spotify_premium"
     duration_ms: Optional[int] = None
     vibeTags: List[str] = []
+    previouslyLiked: bool = False  # True if user has liked this track before (enjoy mode)
 
 
 class FeedRequest(BaseModel):

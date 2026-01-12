@@ -449,7 +449,7 @@ async def get_vibes(conn: sqlite3.Connection = Depends(get_db)):
 
 @app.get("/v1/feed/next", response_model=FeedResponse)
 async def get_feed(
-    mode: str = Query(..., regex="^(explore|vibe)$"),
+    mode: str = Query(..., regex="^(explore|vibe|enjoy)$"),
     vibe_id: Optional[int] = None,
     limit: int = Query(10, ge=1, le=50),
     seed: Optional[int] = None,
@@ -470,11 +470,17 @@ async def get_feed(
     # Initialize recommender
     recommender = RecommenderEngine(conn)
     
-    # Generate feed
+    # Generate feed based on mode
     if mode == "explore":
         track_ids = recommender.generate_explore_feed(user_id, limit, seed)
-    else:
+        track_liked_map = {track_id: False for track_id in track_ids}
+    elif mode == "vibe":
         track_ids = recommender.generate_vibe_feed(user_id, vibe_id, limit, seed)
+        track_liked_map = {track_id: False for track_id in track_ids}
+    else:  # enjoy mode
+        track_tuples = recommender.generate_enjoy_feed(user_id, limit, seed)
+        track_ids = [track_id for track_id, _ in track_tuples]
+        track_liked_map = {track_id: previously_liked for track_id, previously_liked in track_tuples}
     
     # Mark tracks as seen
     recommender.mark_tracks_seen(user_id, track_ids)
@@ -485,6 +491,9 @@ async def get_feed(
     from youtube_search import search_youtube_track
     
     for track_id in track_ids:
+        cursor.execute("""
+        SELECT t.track_id, t.title, t.artist, t.artwork_url, t.preview_url, 
+               t.source, t.spotify_uri, t.duration_ms,
         cursor.execute("""
         SELECT t.track_id, t.title, t.artist, t.artwork_url, t.preview_url, 
                t.source, t.spotify_uri, t.duration_ms,
@@ -564,7 +573,8 @@ async def get_feed(
                 source=source,
                 playbackSource=playback_source,
                 duration_ms=duration_ms,
-                vibeTags=vibe_tags
+                vibeTags=vibe_tags,
+                previouslyLiked=track_liked_map.get(track_id_val, False)
             ))
     
     return FeedResponse(
