@@ -4,15 +4,15 @@ A music exploration and recommendation API built with FastAPI, featuring prefere
 
 ## Features
 
-- 🎵 **Personalized Recommendations**: Uses embedding vectors and online learning from user feedback
-- 🎭 **Vibe-Based Discovery**: Categorizes music into vibes (energetic, chill, melancholic, etc.)
-- 🔐 **Dual User System**: Supports anonymous guest users and Spotify OAuth
-- 📊 **Real Spotify Data**: Fetches tracks and audio features from Spotify API
-- 🎯 **Smart Feed Generation**: 
+- **Personalized Recommendations**: Uses embedding vectors and online learning from user feedback
+- **Vibe-Based Discovery**: Categorizes music into vibes (energetic, chill, melancholic, etc.)
+- **Dual User System**: Supports anonymous guest users and Spotify OAuth
+- **Real Spotify Data**: Fetches tracks and audio features from Spotify API
+- **Smart Feed Generation**: 
   - Explore mode: Only new/unseen tracks
   - Vibe mode: Mix of liked and new tracks within a vibe
-- 💾 **Feedback System**: Like, dislike, more_like_this, and undo actions
-- 🔄 **Preference Vector Updates**: Real-time learning from user interactions
+- **Feedback System**: Like, dislike, more_like_this, and undo actions
+- **Preference Vector Updates**: Real-time learning from user interactions
 
 ## Tech Stack
 
