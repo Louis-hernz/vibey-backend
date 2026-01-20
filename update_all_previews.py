@@ -14,13 +14,24 @@ async def update_batch(offset: int = 0, limit: int = 100):
         "client_secret": settings.spotify_client_secret
     }
     
+    print(f"Authenticating with Spotify...")
+    print(f"  Client ID: {settings.spotify_client_id}")
+    print(f"  Client Secret: {'*' * 20}{settings.spotify_client_secret[-4:] if settings.spotify_client_secret else 'MISSING'}")
+    
     async with httpx.AsyncClient(timeout=60.0) as client:
         try:
             auth_response = await client.post(auth_url, data=auth_data)
+            print(f"  Auth Response Status: {auth_response.status_code}")
+            
+            if auth_response.status_code != 200:
+                print(f"  Auth Error: {auth_response.text}")
+                return 0, 0
+            
             auth_response.raise_for_status()
             access_token = auth_response.json()["access_token"]
+            print(f"  ✓ Successfully authenticated! Token: {access_token[:20]}...")
         except Exception as e:
-            print(f"Failed to get Spotify token: {e}")
+            print(f"  ❌ Failed to get Spotify token: {e}")
             return 0, 0
         
         headers = {"Authorization": f"Bearer {access_token}"}
@@ -48,12 +59,27 @@ async def update_batch(offset: int = 0, limit: int = 100):
         
         print(f"Processing batch {offset}-{offset+limit}: {len(tracks)} tracks")
         
-        for track_id, title, artist in tracks:
+        for i, (track_id, title, artist) in enumerate(tracks):
             try:
                 track_url = f"https://api.spotify.com/v1/tracks/{track_id}"
+                
+                # Detailed logging for first 5 tracks
+                if offset == 0 and i < 5:
+                    print(f"\n  [Track {i+1}] ID: {track_id}")
+                    print(f"  [Track {i+1}] Title: {title}")
+                    print(f"  [Track {i+1}] Artist: {artist}")
+                    print(f"  [Track {i+1}] URL: {track_url}")
+                
                 response = await client.get(track_url, headers=headers)
                 
+                # Detailed logging for first 5 tracks
+                if offset == 0 and i < 5:
+                    print(f"  [Track {i+1}] Response Status: {response.status_code}")
+                    if response.status_code != 200:
+                        print(f"  [Track {i+1}] Response Body: {response.text[:200]}")
+                
                 if response.status_code != 200:
+                    print(f"  ❌ Failed {track_id} ({title}): HTTP {response.status_code} - {response.text[:100]}")
                     failed_count += 1
                     continue
                 
@@ -66,6 +92,11 @@ async def update_batch(offset: int = 0, limit: int = 100):
                     if images:
                         album_art = images[0]['url']
                 
+                # Detailed logging for first 5 tracks
+                if offset == 0 and i < 5:
+                    print(f"  [Track {i+1}] Preview URL: {preview_url or 'None'}")
+                    print(f"  [Track {i+1}] Artwork URL: {album_art or 'None'}")
+                
                 if preview_url or album_art:
                     cursor.execute("""
                     UPDATE tracks 
@@ -76,12 +107,17 @@ async def update_batch(offset: int = 0, limit: int = 100):
                     """, (preview_url, preview_url, album_art or "https://via.placeholder.com/300", track_id))
                     
                     updated_count += 1
+                    if updated_count % 10 == 0:
+                        print(f"  ✓ Updated {updated_count} tracks...")
                 else:
                     failed_count += 1
+                    if offset == 0 and i < 5:
+                        print(f"  [Track {i+1}] ⚠️  No preview or artwork found")
                 
                 await asyncio.sleep(0.35)
                 
             except Exception as e:
+                print(f"  ❌ Error for {track_id} ({title}): {str(e)}")
                 failed_count += 1
                 continue
         
