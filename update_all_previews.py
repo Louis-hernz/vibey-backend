@@ -114,7 +114,7 @@ async def update_batch(offset: int = 0, limit: int = 100):
                     if offset == 0 and i < 5:
                         print(f"  [Track {i+1}] ⚠️  No preview or artwork found")
                 
-                await asyncio.sleep(0.35)
+                await asyncio.sleep(0.5)  # Increased from 0.35 to 0.5 seconds
                 
             except Exception as e:
                 print(f"  ❌ Error for {track_id} ({title}): {str(e)}")
@@ -149,8 +149,10 @@ async def update_all_previews():
         total_failed += failed
         offset += batch_size
         
-        # Small delay between batches
-        await asyncio.sleep(1)
+        # Delay between batches to avoid rate limiting
+        if i < 9:  # Don't delay after last batch
+            print(f"  ⏸  Waiting 10 seconds before next batch...")
+            await asyncio.sleep(10)
     
     print(f"\n✅ Preview update complete!")
     print(f"   Updated: {total_updated}")
